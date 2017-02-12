@@ -49,31 +49,38 @@ namespace quagga
             return false;
         }
 
-        private static bool CleanUpRegistry()
+        private static void CleanUpRegistry()
         {
             // Note: Debug needs to be configured to x64 bits in order to show some keys under
             // http://stackoverflow.com/questions/13324920/regedit-shows-keys-that-are-not-listed-using-getsubkeynames
-            using (RegistryKey regKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
+            using (RegistryKey HKEY_CURRENT_USER = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
+            using (RegistryKey HKEY_LOCAL_MACHINE = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
             {
-                if (regKey != null)
+                CleanUpWScriptValue(HKEY_CURRENT_USER);
+                CleanUpWScriptValue(HKEY_LOCAL_MACHINE);
+            }
+        }
+
+        private static void CleanUpWScriptValue(RegistryKey regKey)
+        {
+            if (regKey == null)
+            {
+                return;
+            }
+            // Look for values containing wscript.
+            foreach (string valueName in regKey.GetValueNames())
+            {
+                // Delete anykey that contains wscript....
+                if (valueName.Contains("wscript"))
                 {
-                    // Look for values containing wscript.
-                    foreach (string valueName in regKey.GetValueNames())
-                    {
-                        // Delete anykey that contains wscript....
-                        if (valueName.Contains("wscript"))
-                        {
-                            regKey.DeleteValue(valueName);
-                        }
-                        // If value-data contains wscript also delete the key.
-                        if (regKey.GetValue(valueName) is string valueData && valueData.Contains("wscript", StringComparison.OrdinalIgnoreCase)) // Note: Check null? o.O
-                        {
-                            regKey.DeleteValue(valueName);
-                        }
-                    }
+                    regKey.DeleteValue(valueName);
+                }
+                // If value-data contains wscript also delete the key.
+                if (regKey.GetValue(valueName) is string valueData && valueData.Contains("wscript", StringComparison.OrdinalIgnoreCase)) // Note: Check null? o.O
+                {
+                    regKey.DeleteValue(valueName);
                 }
             }
-            return true;
         }
 
         public static bool CleanUpTasksScheduler()
