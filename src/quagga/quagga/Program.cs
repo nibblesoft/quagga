@@ -7,6 +7,7 @@ using Microsoft.Win32;
 using System.Security.AccessControl;
 using System.IO;
 using System.Diagnostics;
+using IWshRuntimeLibrary;
 
 namespace quagga
 {
@@ -18,6 +19,7 @@ namespace quagga
 
         static void Main(string[] args)
         {
+            CleanUpFileSystem();
             KillWScriptProcesses();
             Console.ReadLine();
         }
@@ -25,9 +27,10 @@ namespace quagga
         private static bool KillWScriptProcesses()
         {
             int count = 0;
-            foreach(Process proc in Process.GetProcesses())
+            foreach (Process proc in Process.GetProcesses())
             {
-                if(proc.ProcessName.Contains("wscript", StringComparison.OrdinalIgnoreCase))
+                Console.WriteLine(proc.ProcessName);
+                if (proc.ProcessName.Contains("wscript", StringComparison.OrdinalIgnoreCase))
                 {
                     proc.Kill();
                     // TODO: Write to log.
@@ -35,9 +38,13 @@ namespace quagga
                     count++;
                 }
             }
-            if (count == 0)
+            if (count >= 0)
             {
-                Console.WriteLine("No wscript.exe process is running!");
+                Console.WriteLine($"{count} WScript.exe processe/s was/were killed!");
+            }
+            else
+            {
+                Console.WriteLine("No WScript.exe process is running!");
             }
             return false;
         }
@@ -55,11 +62,11 @@ namespace quagga
                     {
                         // Delete anykey that contains wscript....
                         if (valueName.Contains("wscript"))
+                        {
                             regKey.DeleteValue(valueName);
-
+                        }
                         // If value-data contains wscript also delete the key.
-                        var valueData = regKey.GetValue(valueName) as string;
-                        if (valueData != null && valueData.Contains("wscript", StringComparison.OrdinalIgnoreCase))
+                        if (regKey.GetValue(valueName) is string valueData && valueData.Contains("wscript", StringComparison.OrdinalIgnoreCase)) // Note: Check null? o.O
                         {
                             regKey.DeleteValue(valueName);
                         }
@@ -78,17 +85,48 @@ namespace quagga
         {
             // All Users startup folder: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup
             // Personal startup folder: C:\Users\<user name>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup
-            throw new NotImplementedException();
+            string startUpDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            string commomStartUpDirectory = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup);
+            foreach (string file in Directory.GetFiles(startUpDirectory, "*.lnk"))
+            {
+                GetLnkTarget2(file);
+            }
+            foreach (string file in Directory.GetFiles(commomStartUpDirectory, "*.lnk"))
+            {
+                string linkTarget = GetLnkTarget2(file);
+                if(linkTarget.Contains("wscript", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(linkTarget);
+                    }
+                    catch
+                    {
+                        // TODO: Log error.
+                    }
+                }
+            }
+            return false;
         }
 
         public static string GetLnkTarget(string lnkPath)
         {
+            //WshShell shell = new WshShell();
+            //IWshShortcut link = (IWshShortcut)shell.CreateShortcut(filename);
             var shl = new Shell32.Shell(); // Move this to class scope
             lnkPath = Path.GetFullPath(lnkPath);
             var dir = shl.NameSpace(Path.GetDirectoryName(lnkPath));
             var itm = dir.Items().Item(Path.GetFileName(lnkPath));
             var lnk = (Shell32.ShellLinkObject)itm.GetLink;
             return lnk.Target.Path;
+        }
+
+        public static string GetLnkTarget2(string lnkPath)
+        {
+            // WshShellClass shell = new WshShellClass();
+            WshShell shell = new WshShell(); //Create a new WshShell Interface
+            IWshShortcut link = (IWshShortcut)shell.CreateShortcut(lnkPath); //Link the interface to our shortcut
+            return link.TargetPath;
         }
 
         // TODO: Restore any EXTERNAL (USB) hidden files (only root/top level) and delete any link files in USB.
